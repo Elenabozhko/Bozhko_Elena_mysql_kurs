@@ -1,0 +1,266 @@
+DROP DATABASE IF EXISTS holiday hotels;
+CREATE TABLE holiday hotels;
+USE holiday hotels;
+
+
+
+----- общая информация
+
+drop table if exists hotels;
+create table hotels(
+	id serial primary key,
+	hotel varchar(150) unique
+);
+
+
+drop table if exists countries;
+create table countries (
+	id serial primary key,
+	country varchar(150) unique
+);
+
+
+drop table if exists hotel_numbers;
+create table hotel_numbers (
+	id serial primary key,
+	hotel_number varchar(200) unique not null
+);
+
+
+drop table if exists images;
+create table images (
+	id serial primary key,
+	filename varchar(200) not null,
+	path varchar(200) not null
+);
+
+drop table if exists title_types;
+create table title_types (
+	id serial primary key,
+	title_tupe varchar(150) unique not null
+);
+---- Пользователи
+
+
+drop table if exists users;
+create table users (
+	id serial primary key,
+	signed_up_at timestamp default now(),
+	
+	
+	username varchar(50) unique,
+	email varchar(100) unique,
+	password_hash varchar(50)
+);
+
+drop table if exists user_profiles;
+create table user_profiles (
+	id serial primary key,
+	user_id bigint unsigned,
+	update_at timestamp default now(),
+	first_name varchar(100) default ' ',
+	last_name varchar(100) default ' ',
+	gender ENUM('m', 'f', 'nb', 'ud') default 'ud',
+	date_of_birth date,
+	country_id bigint unsigned,
+	about varchar(350) default ' ',
+	
+	is_private BIT default 0,
+	
+	index user_name_idx (first_name, last_name),
+	
+	foreign key (user_id) references users (id)
+		on delete restrict
+		on update cascade,
+	foreign key (country_id) references countries (id)
+		on delete set null
+		on update cascade
+);
+
+drop table if exists messages;
+create table messges (
+	id serial primary key,
+	from_user bigint unsigned,
+	to_user bigint unsigned,
+	created_at timestamp default now(),
+	
+	body_text text not null,
+	
+	foreign key (from_user) references users (id)
+		on delete set null
+		on update cascade,
+	foreign key (to_user) references users (id)
+		on delete set null
+		on update cascade
+);
+
+--- 
+
+drop table if exists titles;
+create table titles (
+	id serial primary key,
+	title varchar(150) not null,
+	original_title varchar(150) default ' ',
+	
+	index (title),
+	index (original_title)
+);
+
+drop table if exists title_info;
+create table title_info (
+	id serial primary key,
+	title_id bigint unsigned,
+	title_type_id bigint unsigned default 1,
+	foto bigint unsigned default 2,
+	description varchar(450) default ' ',
+	release_date date,
+	
+	index (release_date),
+	
+	foreign key (title_id) references titles (id)
+		on delete restrict
+		on update cascade,
+	foreign key (title_type_id) references title_types (id)
+		on delete set null
+		on update cascade,
+	foreign key (foto) references images (id)
+		on delete set null
+		on update cascade
+);
+
+drop table if exists title_country;
+create table title_country (
+	id serial primary key,
+	title_id bigint unsigned,
+	country_id bigint unsigned,
+	
+	foreign key (title_id) references titles (id)
+		on delete restrict
+		on update cascade,
+	foreign key (country_id) references countries (id)
+		on delete set null
+		on update cascade
+);
+
+drop table if exists title_hotels;
+create table title_hotels (
+	id serial primary key,
+	title_id bigint unsigned,
+	hotels_id bigint unsigned,
+	
+	foreign key (title_id) references titles (id)
+		on delete restrict
+		on update cascade,
+	foreign key (hotels_id) references hotels (id)
+		on delete set null
+		on update cascade
+);
+
+DROP TABLE IF EXISTS rating;
+CREATE TABLE rating (
+	id SERIAL PRIMARY KEY,
+	title_id BIGINT UNSIGNED,
+	user_id BIGINT UNSIGNED,
+	rating TINYINT UNSIGNED NOT NULL DEFAULT 0,
+	created_at TIMESTAMP DEFAULT now(),
+	updated_at TIMESTAMP DEFAULT now(),
+
+	INDEX (rating),
+
+	FOREIGN KEY (title_id) REFERENCES titles (id)
+		ON DELETE RESTRICT
+		ON UPDATE CASCADE,
+	FOREIGN KEY (user_id) REFERENCES users (id)
+		ON DELETE RESTRICT
+		ON UPDATE cascade
+);
+
+DROP TABLE IF EXISTS reviews;
+CREATE TABLE reviews (
+	id SERIAL PRIMARY KEY,
+	title_id BIGINT UNSIGNED,
+	user_id BIGINT UNSIGNED,
+	body VARCHAR(500),
+	is_positive BIT DEFAULT 1,
+	created_at TIMESTAMP DEFAULT now(),
+
+	INDEX (is_positive),
+
+	FOREIGN KEY (title_id) REFERENCES titles (id)
+		ON DELETE RESTRICT
+		ON UPDATE CASCADE,
+	FOREIGN KEY (user_id) REFERENCES users (id)
+		ON DELETE RESTRICT
+		ON UPDATE CASCADE
+);
+
+
+DROP FUNCTION IF EXISTS review_rate;
+DELIMITER //
+CREATE FUNCTION review_rate(r_id INT UNSIGNED)
+	RETURNS INT DETERMINISTIC
+BEGIN
+	RETURN (SELECT likes.c - dislikes.c
+			  FROM (
+					   SELECT count(vote) AS c
+						 FROM votes_on_reviews
+						WHERE vote = 1 AND review_id = r_id
+				   ) AS likes
+					   JOIN (
+				  SELECT count(vote) AS c
+					FROM votes_on_reviews
+				   WHERE vote = 0 AND review_id = r_id
+							) AS dislikes
+		   );
+END;
+//
+DELIMITER ;
+
+CREATE OR REPLACE VIEW countries_info AS
+	SELECT c.id as c_id,
+		   c.country,
+		   tc.c1 AS all_titles,
+		   up.c2 AS all_users,
+		   cr.c3 AS all_creators
+	  FROM countries c
+			   LEFT JOIN (SELECT count(title_id) AS c1,
+								 country_id
+							FROM title_country
+						   GROUP BY country_id
+						 ) AS tc ON c.id = tc.country_id
+			   LEFT JOIN (SELECT count(user_id) AS c2,
+								 country_id
+							FROM user_profiles
+						   GROUP BY country_id
+						 ) AS up ON c.id = up.country_id
+			   LEFT JOIN (SELECT count(id) AS c3,
+								 country_id
+							FROM creators
+						   GROUP BY country_id
+						 ) AS cr ON c.id = cr.country_id
+	 GROUP BY
+		 c.country
+	 ORDER BY
+		 c.country;
+
+CREATE OR REPLACE VIEW titles_and_countries AS
+	SELECT t.id AS t_id,
+		   t.title,
+		   c.id AS c_id,
+		   c.country
+	  FROM titles t
+			   JOIN title_country tc ON t.id = tc.title_id
+			   JOIN countries c ON tc.country_id = c.id
+	 ORDER BY
+		 t.id;
+		
+		CREATE OR REPLACE VIEW titles_and_companies AS
+	SELECT t.id AS t_id,
+		   t.title,
+		   c.id AS comp_id,
+		   c.company
+	  FROM titles t
+			   JOIN title_company tc ON t.id = tc.title_id
+			   JOIN companies c ON tc.company_id = c.id
+	 ORDER BY
+		 t.id;

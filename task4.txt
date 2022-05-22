@@ -1,0 +1,24 @@
+DROP PROCEDURE IF EXISTS country_related;
+DELIMITER //
+CREATE PROCEDURE country_related(IN for_country VARCHAR(150))
+BEGIN
+
+	SELECT tp.title, tp.rating
+	  FROM t_profiles tp
+			   JOIN titles_and_countries tac ON tp.t_id = tac.t_id
+	 WHERE tac.country = for_country
+
+	 UNION
+
+	SELECT tp.title, tp.rating
+	  FROM t_profiles tp
+			   JOIN titles_and_cast tac ON tp.t_id = tac.t_id
+			   JOIN cr_profiles crp ON crp.cr_id = tac.cr_id
+	 WHERE crp.country = for_country
+	 GROUP BY
+		 tp.title;
+
+END //
+DELIMITER ;
+
+CALL country_related('Turkey');
